@@ -4,7 +4,7 @@ using UnityEngine;
 
 public class PICMessageListener : MonoBehaviour {
 
-    public delegate void JoystickHandler(string s,float f);
+	public delegate void JoystickHandler(int j, Vector2 v);
     public event JoystickHandler JoystickMove;
 
     public delegate void ButtonHandler(int i,bool b);
@@ -18,6 +18,9 @@ public class PICMessageListener : MonoBehaviour {
 	}
 
 	public void OnMessageArrived(string message) {
+
+		Debug.Log ("Received message: " + message);
+
 		//TODO: parse and execute
 		char s1 = message[0];
 		char s2 = message[1];
@@ -26,21 +29,23 @@ public class PICMessageListener : MonoBehaviour {
 		switch (s1) {
             case 't':
             case 'T':
-                OnTemperatureRead((float)s2);
+                OnTemperatureRead(s2);
                 break;
+		case 'j':
+		case 'J':
+			OnJoystickMove(s2, new Vector2((float)rest[0],(float)rest[1]));
+			break;
+		case 'b':
+		case 'B':
+			Debug.Log ("button rest is " + rest [0]);
+                OnButtonMove(s2, (rest[0] == '1' ? true : false));
+			break;
 		case 'P':
 		case 'p':
 			Print (rest);
 			break;
-		case 'j':
-		case 'J':
-                OnJoystickMove(s2, message[3]);
-			break;
-		case 'b':
-		case 'B':
-                OnButtonMove(s2, (message[3] = '1' ? true : false));
-			break;
 		default:
+			Print (rest);
 			break;
 		}
 
@@ -63,13 +68,13 @@ public class PICMessageListener : MonoBehaviour {
         }
     }
 
-    public void OnJoystickMove(string axis, float val)
+	public void OnJoystickMove(int joystick, Vector2 vals)
     {
         JoystickHandler handler = JoystickMove;
 
         if(handler != null)
         {
-            handler.Invoke(axis,val);
+			handler.Invoke(joystick,vals);
         }
     }
 

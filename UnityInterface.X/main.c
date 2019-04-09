@@ -7,15 +7,19 @@
  */
 
 #include <plib.h>
+#include <proc/p32mx150f128d.h>
 
 /* PIN DIAGRAM
  * 5    - U1RX
  * 18   - Analog0 (** NOT 5V TOLERANT **)
  * 19   - Analog1 (** NOT 5V TOLERANT **)
+ * 20   - Button2 (joystick button)
  * 22   - LED
  * 23   - U1TX
  * 37   - INT0
  * 40   - GND
+ * 
+ * Also using TMR3 for analog read timings
  */
 
 void setupPins();
@@ -26,10 +30,15 @@ void makeMessage(char*,char,char,int*,char*);
 void sendMessage(char*,int);
 
 void OnINT0();
+void OnINT1();
+void OnTMR3();
 void OnRXDone();
 void OnTXReady();
 void OnADCReady();
 void printbyte(char);
+
+const int TIMER_DELAY = 1000;
+const int NUM_SAMP_TO_IF = 4;
 
 const int BAUD_RATE = 9600;
 const int MAX_REC_BUF_LEN = 8;
@@ -52,17 +61,9 @@ main() {
     setupADC();
     setupUART();
     
-    //Test Transmission
-    /*
-    char params[2] = {'a','x'};
-    int count[1] = {2};
-    char sel1 = '\n';
-    char sel2 = '0';
-    char out[4] = {0,0,0};
-    makeMessage(out,sel1,sel2,count,params);
-    sendMessage(out,*count);
-    */
-     
+    //Test transmission
+    char test[5] = {'a','w','a','k','e'};
+    sendMessage(test,5);
      
     while(1) {
         
@@ -96,12 +97,20 @@ void setupInterrupts() {
     
    INTEnableSystemMultiVectoredInt();  //handle interrupts
     
-    //INT0
+    //INT0 and INT1
     TRISBbits.TRISB7 = 1;
+    TRISBbits.TRISB0 = 1;
     
     INTCONbits.INT0EP = buttonEdgeDir;  //rising edge
     IEC0bits.INT0IE = 1;    //enable
     IPC0bits.INT0IP = 1;    //priority 1
+    
+    //joystick button
+    PPSInput(4,INT1,RPB0);
+    INTCONbits.INT1EP = buttonEdgeDir;
+    IPC1bits.INT1IP = 1;
+    IPC1bits.INT1IS = 1;
+    IEC0bits.INT1IE = 1;
     
     //U1RX
     IFS1bits.U1RXIF = 0;
@@ -109,30 +118,41 @@ void setupInterrupts() {
     IPC8bits.U1IS = 1;
     IEC1bits.U1RXIE = 1;
     
-    //AD1
+    //AD1 for channels A0 and A1
     IEC0bits.AD1IE = 1;
     IPC5bits.AD1IP = 1;
     IPC5bits.AD1IS = 1;
     IFS0bits.AD1IF = 0;
+    
+    //TMR2
+    IEC0bits.T2IE = 1;
+    IPC2bits.T2IP = 1;
+    IPC2bits.T2IS = 1;
     
 }
 
 void setupADC() {
     //TODO: configure to use A0 and A1, not auto-sample
     
+    //Set up timer
+    T3CONbits.TGATE = 0;
+    T3CONbits.TCS = 0;
+    T3CONbits.TCKPS = 3;
+    PR3 = TIMER_DELAY;
+    
     //configure ADC
     //table 17.4
     AD1CHSbits.CH0SB = 0; //select scan
     //AD1CHSbits.CH0SA = 0; //select A0
     AD1CON1bits.FORM = 0; //use 16-bit integer output
-    AD1CON1bits.SSRC = 7; //auto convert
+    AD1CON1bits.SSRC = 2; //TMR3 period determines conversion start
     
     //scan channels A0 and A1
     AD1CSSL = 0x0003;
     
     AD1CON2bits.VCFG = 0; //use built-in VR+ and VR-
     AD1CON2bits.CSCNA = 1; //Do scan
-    AD1CON2bits.SMPI = 3; //interrupt at completion of 4 conversions
+    AD1CON2bits.SMPI = NUM_SAMP_TO_IF - 1; //interrupt at completion of 4 conversions
     AD1CON2bits.BUFM = 0; //buffer configured as one 16-word buffer
     
     AD1CON2bits.ALTS = 0; //always use MUX A (don't alternate))
@@ -142,7 +162,8 @@ void setupADC() {
     
     AD1CON1bits.ASAM = 1; //Sample auto-start
     
-    AD1CON1bits.ON = 0; //FIXME
+    AD1CON1bits.ON = 1;
+    T3CONbits.ON = 1;
     
 }
 
@@ -177,7 +198,7 @@ void makeMessage(char* out, char s1,char s2,int* len, char* params) {
     //NL and CR to be appended when sent
 };
 
-//Inputs MUST have \n and \r at tail!
+//Adds terminating characters '\n' and '\r'
 void sendMessage(char* message, int len) {
     const char NL = '\n';
     const char CR = '\r';
@@ -188,9 +209,9 @@ void sendMessage(char* message, int len) {
         if(i < len) {
             send_val = *(message+i);
         } else if(i == len) {
-            send_val = '\n';
+            send_val = CR;
         } else {
-            send_val = '\r';
+            send_val = NL;
         }
         U1TXREG = send_val;
         while(U1STAbits.UTXBF == 1);
@@ -200,18 +221,24 @@ void sendMessage(char* message, int len) {
 }
 
 void __ISR(3) OnINT0() {
-    char params[1];
-    params[0] = INTCONbits.INT0EP + 65;
-    int count[1] = {1};
-    char sel1 = 'b';
-    char sel2 = '1';
-    char out[5];
-    makeMessage(out,sel1,sel2,count,params);
-    sendMessage(out,*count);
+    
+    char val = INTCONbits.INT0EP + '0';
+    char out[3] = {'b','1',val};
+    sendMessage(out,3);
 
     INTCONbits.INT0EP = (INTCONbits.INT0EP == 0) ? 1 : 0;  //toggle edge
     
     IFS0bits.INT0IF = 0;   
+}
+
+void __ISR(7) OnINT1() {
+    char val = INTCONbits.INT1EP + '0';
+    char out[3] = {'b','2',val};
+    sendMessage(out,3);
+    
+    //INTCONbits.INT1EP = (INTCONbits.INT1EP == 0) ? 1 : 0; 
+    
+    IFS0bits.INT1IF = 0;
 }
 
 void __ISR(32) OnRXDone() {
@@ -243,29 +270,35 @@ void __ISR(32) OnRXDone() {
 void OnTXReady();
 
 void __ISR(23) OnADCReady() {
-    unsigned int samples[8] = {0,0,0,0,0,0,0,0};
+    unsigned int samples_x[2] = {0,0};
+    unsigned int samples_y[2] = {0,0};
 
-    samples[0] = ADC1BUF0;
-    samples[1] = ADC1BUF1;
-    samples[2] = ADC1BUF2;
-    samples[3] = ADC1BUF3;
-
+    samples_x[0] = ADC1BUF0;
+    samples_y[0] = ADC1BUF1;
+    samples_x[1] = ADC1BUF2;
+    samples_y[1] = ADC1BUF3;
     
-    int mean = 0, i = 0;
-    for( ; i<4; i++) {
-        mean += (samples[i] >>2);
+    int mean_x = 0, mean_y = 0, i = 0;
+    for( ; i< NUM_SAMP_TO_IF / 2; i++) {
+        mean_x += (samples_x[i] >>3); //FIXME
     }
-    mean /= 8;
+    mean_x /= (NUM_SAMP_TO_IF / 2);
     
-    //test input
-    char params[1];
-    params[0] = (int)mean;
-    int count[1] = {1};
-    char sel1 = 'j';
-    char sel2 = 'x';
-    char out[5];
-    makeMessage(out,sel1,sel2,count,params);
-    sendMessage(out,*count);
+    for( i = 0; i< NUM_SAMP_TO_IF / 2; i++) {
+        mean_y += (samples_y[i] >>3);   //FIXME
+    }
+    mean_y /= (NUM_SAMP_TO_IF / 2);
+        
+    //output if delta
+    if(joystick_x != mean_x || joystick_y != mean_y) {
+        const int OUT_LEN = 4;
+        char out[4] = {'j','1',(int)mean_x,(int)mean_y};
+        sendMessage(out,OUT_LEN);
+    }
+    
+    joystick_x = mean_x;
+    joystick_y = mean_y;
+    T3CONbits.ON = 1;
     
     IFS0bits.AD1IF = 0;
     
