@@ -5,6 +5,8 @@ using UnityEngine;
 public class CubeListen : MonoBehaviour {
 
 	public PICMessageListener listener;
+	public float SCALE_X;
+	public float SCALE_Y;
 
 	// Use this for initialization
 	void Start () {
@@ -23,7 +25,7 @@ public class CubeListen : MonoBehaviour {
 
 		Debug.Log ("moving to button: " + state);
 
-		float new_z = (state ? -1 : 0);
+		float new_z = (state ? 0 : 1);
 
 		transform.position = new Vector3 (transform.position.x, transform.position.y, new_z);
 	}
@@ -31,11 +33,10 @@ public class CubeListen : MonoBehaviour {
 
 	public void MoveToJPos(int jid, Vector2 pos) {
 		const int RANGE_MAX = 128;
-		const float MULT = (float)4;
 		const float DELTA_MIN = (float)0.01;
 
-		float new_x = MULT*(float)(pos.x / RANGE_MAX - 0.5);
-		float new_y = MULT*(float)(pos.y / RANGE_MAX - 0.5);
+		float new_x = SCALE_X*(float)(pos.x / RANGE_MAX - 0.5);
+		float new_y = SCALE_Y*(float)(pos.y / RANGE_MAX - 0.5);
 
 		if (Mathf.Abs(transform.position.x - new_x) > DELTA_MIN ||
 			Mathf.Abs(transform.position.y - new_y) > DELTA_MIN) {
@@ -45,5 +46,9 @@ public class CubeListen : MonoBehaviour {
 			transform.position = new Vector3 (new_x, new_y, transform.position.z);
 
 		}
+	}
+
+	public void OnTriggerEnter(Collider d) {
+		Debug.Log ("Found a collision on the cube.");
 	}
 }
