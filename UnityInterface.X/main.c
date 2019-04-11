@@ -4,38 +4,29 @@
  * Purpose: Direct mcu operations for Unity <-> peripheral communications
  *
  * Last updated: April 2, 2019
- */
-
-#include <plib.h>
-#include <proc/p32mx150f128d.h>
-
-/* PIN DIAGRAM
+ * 
+ * PIN DIAGRAM
  * 5    - U1RX
  * 18   - Analog0 (** NOT 5V TOLERANT **)
  * 19   - Analog1 (** NOT 5V TOLERANT **)
- * 20   - Button2 (joystick button)
- * 22   - LED
+ * 20   - INT1 (joystick button)
  * 23   - U1TX
  * 37   - INT0
- * 40   - GND
  * 
  * Also using TMR3 for analog read timings
  */
+#include <plib.h>
 
 void setupPins();
 void setupInterrupts();
 void setupADC();
 void setupUART();
-void makeMessage(char*,char,char,int*,char*);
 void sendMessage(char*,int);
 
 void OnINT0();
 void OnINT1();
-void OnTMR3();
 void OnRXDone();
-void OnTXReady();
 void OnADCReady();
-void printbyte(char);
 
 const int TIMER_DELAY = 1000;
 const int NUM_SAMP_TO_IF = 4;
@@ -52,34 +43,16 @@ int joystick_x = 0;
 int joystick_y = 0;
 float temp = 0;
 
-
-
 main() {
-    
     setupPins();
     setupInterrupts();
     setupADC();
     setupUART();
-    
-    //Test transmission
-    char test[5] = {'a','w','a','k','e'};
-    sendMessage(test,5);
      
-    while(1) {
-        
-        //sendMessage(out,*count);
-        
-        if(bufReady) {
-            PORTBbits.RB2 = 1;
-            recbuflen = 0;
-            bufReady = 0;
-        }
-    }
-    
+    while(1) {}
 }
 
 void setupPins() {
-
     TRISB = 0;
     TRISC = 0;
     ANSELB = 0;
@@ -88,18 +61,15 @@ void setupPins() {
     LATC = 0;
     
     TRISCbits.TRISC6 = 1;   // pin 5 - U1TX
+    TRISBbits.TRISB7 = 1;   // pin 37 - INT0
+    TRISBbits.TRISB0 = 1;   // pin 20 - INT1
     
     PPSOutput(1, RPB3, U1TX);
     PPSInput(3, U1RX, RPC6);
 }
 
 void setupInterrupts() {
-    
-   INTEnableSystemMultiVectoredInt();  //handle interrupts
-    
-    //INT0 and INT1
-    TRISBbits.TRISB7 = 1;
-    TRISBbits.TRISB0 = 1;
+    INTEnableSystemMultiVectoredInt();  //handle interrupts
     
     INTCONbits.INT0EP = buttonEdgeDir;  //rising edge
     IEC0bits.INT0IE = 1;    //enable
@@ -120,20 +90,12 @@ void setupInterrupts() {
     
     //AD1 for channels A0 and A1
     IEC0bits.AD1IE = 1;
-    IPC5bits.AD1IP = 1;
-    IPC5bits.AD1IS = 1;
+    IPC5bits.AD1IP = 2;
+    IPC5bits.AD1IS = 2;
     IFS0bits.AD1IF = 0;
-    
-    //TMR2
-    IEC0bits.T2IE = 1;
-    IPC2bits.T2IP = 1;
-    IPC2bits.T2IS = 1;
-    
 }
 
-void setupADC() {
-    //TODO: configure to use A0 and A1, not auto-sample
-    
+void setupADC() {    
     //Set up timer
     T3CONbits.TGATE = 0;
     T3CONbits.TCS = 0;
@@ -164,39 +126,19 @@ void setupADC() {
     
     AD1CON1bits.ON = 1;
     T3CONbits.ON = 1;
-    
 }
 
 void setupUART() {
     OSCCONbits.PBDIV = 3;   //PBCLK is SYSCLK divided by 8
-    U1STA = 0;        // clear status
-    U1MODE = 0;    // clear mode
-    
+    U1STA = 0;          // clear status
+    U1MODE = 0;         // clear mode
     U1BRG = 25;         //Expected: 9600, Observed: 1200
-    
     U1STA = 0x1800;     //Enable RX and TX
-    
     U1MODE = 0x8000;    // Enable UART for 8-bit data
                         // No Parity, 1 Stop bit
                         // (source: PIC32 Datasheet - 21)
-    
     U1STASET = 0x1400;  // Enable Transmit and Receive
 }
-
-void makeMessage(char* out, char s1,char s2,int* len, char* params) {
-    int i = 0;
-    int count = *len;
-    
-    *out = s1;
-    *(out+1) = s2;
-    
-    for(; i < count; i++) {
-        *(out+2+i) = (*(params + i));
-    }
-    
-    *len = count+2;
-    //NL and CR to be appended when sent
-};
 
 //Adds terminating characters '\n' and '\r'
 void sendMessage(char* message, int len) {
@@ -217,11 +159,9 @@ void sendMessage(char* message, int len) {
         while(U1STAbits.UTXBF == 1);
         IFS1bits.U1TXIF = 0;
     }
-        
 }
 
 void __ISR(3) OnINT0() {
-    
     char val = INTCONbits.INT0EP + '0';
     char out[3] = {'b','1',val};
     sendMessage(out,3);
@@ -235,8 +175,6 @@ void __ISR(7) OnINT1() {
     char val = INTCONbits.INT1EP + '0';
     char out[3] = {'b','2',val};
     sendMessage(out,3);
-    
-    //INTCONbits.INT1EP = (INTCONbits.INT1EP == 0) ? 1 : 0; 
     
     IFS0bits.INT1IF = 0;
 }
@@ -254,38 +192,28 @@ void __ISR(32) OnRXDone() {
         
         bufReady = (recbuflen >= MAX_REC_BUF_LEN) ? 1 : 0;
         
-        //test receive
-            char params[1];
-        params[0] = recbuflen+65;
-        int count[1] = {3};
-        char sel1 = 'r';
-        char sel2 = 'x';
-        char out[5];
-        makeMessage(out,sel1,sel2,count,params);
-        sendMessage(out,*count);
     }
                         
     IFS1bits.U1RXIF = 0;  
 }
-void OnTXReady();
 
 void __ISR(23) OnADCReady() {
     unsigned int samples_x[2] = {0,0};
     unsigned int samples_y[2] = {0,0};
 
-    samples_x[0] = ADC1BUF0;
-    samples_y[0] = ADC1BUF1;
-    samples_x[1] = ADC1BUF2;
-    samples_y[1] = ADC1BUF3;
+    samples_y[0] = ADC1BUF0;
+    samples_x[0] = ADC1BUF1;
+    samples_y[1] = ADC1BUF2;
+    samples_x[1] = ADC1BUF3;
     
     int mean_x = 0, mean_y = 0, i = 0;
     for( ; i< NUM_SAMP_TO_IF / 2; i++) {
-        mean_x += (samples_x[i] >>3); //FIXME
+        mean_x += (samples_x[i] >>3);
     }
     mean_x /= (NUM_SAMP_TO_IF / 2);
     
     for( i = 0; i< NUM_SAMP_TO_IF / 2; i++) {
-        mean_y += (samples_y[i] >>3);   //FIXME
+        mean_y += (samples_y[i] >>3);
     }
     mean_y /= (NUM_SAMP_TO_IF / 2);
         
@@ -301,10 +229,4 @@ void __ISR(23) OnADCReady() {
     T3CONbits.ON = 1;
     
     IFS0bits.AD1IF = 0;
-    
 }
-
-void printbyte(char b) {
-    LATC = b;
-    LATBbits.LATB0 = (b & 0x40)>>6;
-};

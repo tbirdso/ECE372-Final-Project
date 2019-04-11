@@ -8,16 +8,19 @@ public class SpawnGoal : MonoBehaviour {
 	public Vector3 min_spawn;
 	public Vector3 max_spawn;
 
+	const int NUM_GOALS = 3;
+
 	void Start () {
+
+
 		Random.InitState (3720);
 
-		for (int i = 0; i < 3; i++) {
+		for (int i = 0; i < NUM_GOALS; i++) {
 			makeGoal ();
 		}
 	}
 
 	public void makeGoal() {
-		Debug.Log ("Let's make a goal.");
 
 		float x_pos = Random.Range (min_spawn.x, max_spawn.x);
 		float y_pos = Random.Range (min_spawn.y, max_spawn.y);

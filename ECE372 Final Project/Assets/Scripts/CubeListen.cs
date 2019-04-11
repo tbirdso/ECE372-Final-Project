@@ -15,16 +15,8 @@ public class CubeListen : MonoBehaviour {
 		listener.JoystickMove += new PICMessageListener.JoystickHandler (MoveToJPos);
 
 	}
-	
-	// Update is called once per frame
-	void Update () {
-		
-	}
 
 	public void MoveToButton(int bid, bool state) {
-
-		Debug.Log ("moving to button: " + state);
-
 		float new_z = (state ? 0 : 1);
 
 		transform.position = new Vector3 (transform.position.x, transform.position.y, new_z);
@@ -41,14 +33,8 @@ public class CubeListen : MonoBehaviour {
 		if (Mathf.Abs(transform.position.x - new_x) > DELTA_MIN ||
 			Mathf.Abs(transform.position.y - new_y) > DELTA_MIN) {
 
-			Debug.Log ("Moving cube to " + pos.x + " " + pos.y);
-
 			transform.position = new Vector3 (new_x, new_y, transform.position.z);
 
 		}
-	}
-
-	public void OnTriggerEnter(Collider d) {
-		Debug.Log ("Found a collision on the cube.");
 	}
 }
