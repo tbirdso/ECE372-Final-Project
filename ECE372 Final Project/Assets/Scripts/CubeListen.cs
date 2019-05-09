@@ -17,7 +17,8 @@ public class CubeListen : MonoBehaviour {
 	}
 
 	public void MoveToButton(int bid, bool state) {
-		float new_z = (state ? 0 : 1);
+
+		float new_z = ((bid=='1') ? 1 : Mathf.Abs(transform.position.z - 1));
 
 		transform.position = new Vector3 (transform.position.x, transform.position.y, new_z);
 	}

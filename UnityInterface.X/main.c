@@ -17,6 +17,13 @@
  */
 #include <plib.h>
 
+//macro from user kg4ysn on Microchip forums
+#define PERIPHERAL_CLOCK_HZ ( (unsigned long int) 40000000UL )
+ #define SERIAL_BAUD (9600)
+ 
+ #define SERIAL_BRG \
+      (unsigned short int)(( (float)PERIPHERAL_CLOCK_HZ / ( (float)16 * (float)SERIAL_BAUD ) ) - (float)0.5)
+
 void setupPins();
 void setupInterrupts();
 void setupADC();
@@ -49,7 +56,14 @@ main() {
     setupADC();
     setupUART();
      
-    while(1) {}
+    while(1) {
+        if(bufReady == 1) {
+            sendMessage(recbuf,recbuflen);
+            
+            recbuflen = 0;
+            bufReady = 0;
+        }
+    }
 }
 
 void setupPins() {
@@ -129,6 +143,7 @@ void setupADC() {
 }
 
 void setupUART() {
+    /* vvvvvv This is working at 1200 baud vvvvvv
     OSCCONbits.PBDIV = 3;   //PBCLK is SYSCLK divided by 8
     U1STA = 0;          // clear status
     U1MODE = 0;         // clear mode
@@ -138,6 +153,32 @@ void setupUART() {
                         // No Parity, 1 Stop bit
                         // (source: PIC32 Datasheet - 21)
     U1STASET = 0x1400;  // Enable Transmit and Receive
+     * */
+
+    
+    /* This is.. sort of working
+    OSCCONbits.PBDIV = 3;   //PBCLK is SYSCLK divided by 8
+    U1STA = 0;          // clear status
+    U1MODE = 0;         // clear mode
+    U1BRG = 2;         //Expected: 9600, Observed: about 9600?
+    U1STA = 0x1800;     //Enable RX and TX
+    U1MODE = 0x8000;    // Enable UART for 8-bit data
+                        // No Parity, 1 Stop bit
+                        // (source: PIC32 Datasheet - 21)
+    U1STASET = 0x1400;  // Enable Transmit and Receive
+     */
+    
+    //Try 4800
+    OSCCONbits.PBDIV = 3;   //PBCLK is SYSCLK divided by 8
+    U1STA = 0;          // clear status
+    U1MODE = 0;         // clear mode
+    U1BRG = 6;         //Expected: 9600, Observed: 1200
+    U1STA = 0x1800;     //Enable RX and TX
+    U1MODE = 0x8000;    // Enable UART for 8-bit data
+                        // No Parity, 1 Stop bit
+                        // (source: PIC32 Datasheet - 21)
+    U1STASET = 0x1400;  // Enable Transmit and Receive
+    
 }
 
 //Adds terminating characters '\n' and '\r'
@@ -163,8 +204,8 @@ void sendMessage(char* message, int len) {
 
 void __ISR(3) OnINT0() {
     char val = INTCONbits.INT0EP + '0';
-    char out[3] = {'b','1',val};
-    sendMessage(out,3);
+    char out[4] = {'b','1',val,SERIAL_BRG+'0'};
+    sendMessage(out,4);
 
     INTCONbits.INT0EP = (INTCONbits.INT0EP == 0) ? 1 : 0;  //toggle edge
     
