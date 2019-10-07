@@ -5,7 +5,7 @@ A game controller interface linking the PIC32 microcontroller to events in Unity
 The process flow is as follows:
 - The user inputs data via a joystick or a button
 - The PIC32 microcontroller gets analog input from the joystick and/or digital input from the button
-- The PIC32 transmits data to a PC via a Serial-to-USB converter
+- The PIC32 transmits data to a PC via a USB-to-TTL converter
 - A running Unity3D instance receives the data via an open port using the Ardity package
 - The Unity3D scene interprets data and translates to in-scene events
 
